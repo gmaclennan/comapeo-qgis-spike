@@ -1,0 +1,130 @@
+name: spike
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  pip:
+    name: ${{ matrix.os }} / ${{ matrix.binding }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        binding: [PyQt5, PyQt6]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - run: python -m pip install ${{ matrix.binding }}
+      - run: python -m pip list
+      - name: Run client against server
+        run: node run.js python client.py
+        env:
+          SPIKE_EXPECT_BINDING: ${{ matrix.binding }}
+
+  qgis-docker:
+    name: docker qgis/qgis:${{ matrix.tag }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: [ltr, stable]
+    container:
+      image: qgis/qgis:${{ matrix.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: QGIS environment and imports
+        run: python3 qgis_env.py
+      - name: Run client against server
+        run: node run.js python3 client.py
+        env:
+          SPIKE_EXPECT_BINDING: qgis.PyQt
+
+  qgis-windows:
+    name: windows OSGeo4W ${{ matrix.package }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: qgis-ltr
+            python: python-qgis-ltr.bat
+          - package: qgis
+            python: python-qgis.bat
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install QGIS with OSGeo4W
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://download.osgeo.org/osgeo4w/v2/osgeo4w-setup.exe -OutFile osgeo4w-setup.exe
+          $setupArgs = @(
+            '--autoaccept', '--advanced', '--arch', 'x86_64', '--quiet-mode',
+            '--only-site', '--no-shortcuts',
+            '--root', 'C:\OSGeo4W',
+            '--site', 'https://download.osgeo.org/osgeo4w/v2',
+            '--local-package-dir', 'C:\o4w-pkgs',
+            '--packages', '${{ matrix.package }}'
+          )
+          $proc = Start-Process .\osgeo4w-setup.exe -ArgumentList $setupArgs -Wait -PassThru
+          Write-Host "setup exit code: $($proc.ExitCode)"
+          Get-ChildItem C:\OSGeo4W\bin -Filter *.bat | ForEach-Object { $_.Name }
+      - name: QGIS environment and imports
+        shell: cmd
+        run: C:\OSGeo4W\bin\${{ matrix.python }} qgis_env.py
+      - name: Run client against server
+        shell: cmd
+        run: node run.js cmd /c C:\OSGeo4W\bin\${{ matrix.python }} client.py
+        env:
+          SPIKE_EXPECT_BINDING: qgis.PyQt
+
+  perms-unix:
+    name: socket permissions / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: node run.js bash perms_unix.sh
+        env:
+          SPIKE_SOCKET_DIR: /tmp
+
+  perms-windows:
+    name: pipe access / windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - run: node run.js pwsh -File perms_win.ps1
