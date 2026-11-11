@@ -44,6 +44,13 @@ for module_name, attr in CHECKS:
         report("OK   %s.%s" % (module_name, attr))
     except Exception as exc:
         report("FAIL %s.%s: %s: %s" % (module_name, attr, type(exc).__name__, exc))
+        if module_name.startswith("qgis.PyQt."):
+            direct = module_name.replace("qgis.PyQt", "PyQt" + QT_VERSION_STR[0])
+            try:
+                getattr(importlib.import_module(direct), attr)
+                report("     OK   direct import %s.%s" % (direct, attr))
+            except Exception as direct_exc:
+                report("     FAIL direct import %s.%s: %s" % (direct, attr, direct_exc))
 
 summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
 if summary_path:

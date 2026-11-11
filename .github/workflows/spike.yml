@@ -77,17 +77,29 @@ jobs:
       - name: Install QGIS with OSGeo4W
         shell: pwsh
         run: |
-          Invoke-WebRequest https://download.osgeo.org/osgeo4w/v2/osgeo4w-setup.exe -OutFile osgeo4w-setup.exe
+          $sites = @(
+            'https://download.osgeo.org/osgeo4w/v2',
+            'https://ftp.osuosl.org/pub/osgeo/download/osgeo4w/v2'
+          )
+          $site = $null
+          foreach ($candidate in $sites) {
+            curl.exe -fsSL --connect-timeout 20 --max-time 120 --retry 2 -o osgeo4w-setup.exe "$candidate/osgeo4w-setup.exe"
+            if ($LASTEXITCODE -eq 0) { $site = $candidate; break }
+            Write-Host "could not download from $candidate"
+          }
+          if (-not $site) { throw 'no OSGeo4W site reachable' }
+          Write-Host "using site $site"
           $setupArgs = @(
             '--autoaccept', '--advanced', '--arch', 'x86_64', '--quiet-mode',
             '--only-site', '--no-shortcuts',
             '--root', 'C:\OSGeo4W',
-            '--site', 'https://download.osgeo.org/osgeo4w/v2',
+            '--site', $site,
             '--local-package-dir', 'C:\o4w-pkgs',
             '--packages', '${{ matrix.package }}'
           )
           $proc = Start-Process .\osgeo4w-setup.exe -ArgumentList $setupArgs -Wait -PassThru
           Write-Host "setup exit code: $($proc.ExitCode)"
+          Get-ChildItem C:\OSGeo4W\var\log -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 15 }
           Get-ChildItem C:\OSGeo4W\bin -Filter *.bat | ForEach-Object { $_.Name }
       - name: QGIS environment and imports
         shell: cmd

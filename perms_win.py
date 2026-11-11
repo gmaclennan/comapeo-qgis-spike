@@ -5,7 +5,6 @@
 """
 
 import ctypes
-import getpass
 import sys
 from ctypes import wintypes
 
@@ -67,7 +66,10 @@ def print_sddl(pipe):
 
 
 def try_opens(pipe):
-    print("user: %s" % getpass.getuser())
+    name = ctypes.create_unicode_buffer(257)
+    size = wintypes.DWORD(257)
+    ctypes.WinDLL("advapi32").GetUserNameW(name, ctypes.byref(size))
+    print("user (GetUserNameW): %s" % name.value)
     for label, mode in (("read-write", "r+b"), ("read-only", "rb"), ("write-only", "wb")):
         try:
             with open(pipe, mode, buffering=0):
